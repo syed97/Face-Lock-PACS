@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Face Lock - PACS UI</title>
+  <style>
+    /* --- Base Styles --- */
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      background-color: #f0f2f5;
+      color: #333;
+    }
+
+    /* Container for the large center UI */
+    #mainUiContainer {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: calc(100vh - 20px);
+      box-sizing: border-box;
+      position: relative;
+      overflow: hidden;
+      padding: 10px;
+    }
+
+    /* --- Dummy PACS UI styling --- */
+    #dummyPacsUi {
+      display: flex;
+      width: 95%;
+      height: 95%;
+      background-color: #ffffff;
+      border: 1px solid #d1d9e6;
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    #pacsSidebar {
+      width: 220px;
+      background-color: #e4e9f2;
+      padding: 15px;
+      border-right: 1px solid #d1d9e6;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow-y: auto;
+    }
+    #pacsSidebar h3 {
+      margin-top: 0;
+      margin-bottom: 5px;
+      color: #555;
+      font-size: 1rem;
+      border-bottom: 1px solid #ccc;
+      padding-bottom: 5px;
+    }
+    #pacsSidebar button {
+      padding: 8px 12px;
+      background-color: #6c757d;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      text-align: left;
+      font-size: 0.9rem;
+      width: 100%;
+      box-sizing: border-box;
+      margin-bottom: 3px;
+    }
+    #pacsSidebar button:hover { background-color: #5a6268; }
+    #pacsSidebar p#patientInfoText {
+       font-size: 0.9rem;
+       color: #444;
+       background-color: #f8f9fa;
+       padding: 10px;
+       border-radius: 4px;
+       border: 1px solid #dee2e6;
+       margin-bottom: 15px;
+    }
+    #pacsSidebar .user-switch-btn.active { background-color: #007bff; font-weight: bold; }
+
+    #pacsViewer {
+      flex-grow: 1;
+      background-color: #2b2b2b;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: #ccc;
+      font-size: 1.5rem;
+      position: relative;
+      overflow: hidden;
+    }
+    #pacsImage { /* Style for the image */
+        max-width: 900px;
+        max-height: 100%;
+        object-fit: contain;
+        display: block;
+    }
+    /* --- End PACS UI styles --- */
+
+    /* Camera Feed Container */
+    #container {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      width: 160px;
+      height: 120px;
+      border: 2px solid #ccc;
+      border-radius: 8px;
+      background-color: #fff;
+      z-index: 1000;
+      overflow: hidden;
+      display: flex;
+      justify-content: left;
+      align-items: left;
+    }
+
+    /* Video/Canvas Styles */
+    video, canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* Message Display */
+    #message {
+      position: fixed;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 5px 15px;
+      background-color: rgba(0,0,0,0.7);
+      color: white;
+      border-radius: 5px;
+      font-size: 14px;
+      font-weight: bold;
+      z-index: 1001;
+    }
+
+    /* Overlay Styles */
+    #overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.928);
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      font-size: 1.5rem;
+      z-index: 9999;
+      transition: opacity 0.3s ease;
+      opacity: 1; /* Start visible */
+      pointer-events: auto; /* Start blocking */
+    }
+    #overlay.hidden {
+      opacity: 0; /* Fade out */
+      pointer-events: none; /* Allow interaction */
+    }
+    #overlay h2 { margin: 10px; }
+    #overlay p { margin: 5px; }
+
+  </style>
+</head>
+<body>
+
+  <!-- Dummy PACS UI -->
+  <div id="mainUiContainer">
+    <div id="dummyPacsUi">
+      <div id="pacsSidebar">
+        <h3>Patient Information</h3>
+        <p id="patientInfoText">Loading...</p>
+
+        <h3>Tools</h3>
+        <button>Zoom</button>
+        <button>Measure</button>
+        <button>Window/Level</button>
+
+        <h3>Switch Patient</h3>
+        <button class="user-switch-btn" data-userid="user1">Patient 1 (Doe)</button>
+        <button class="user-switch-btn" data-userid="user2">Patient 2 (Smith)</button>
+        <button class="user-switch-btn" data-userid="user3">Patient 3 (Williams)</button>
+      </div>
+      <div id="pacsViewer">
+        <img id="pacsImage" src="" alt="Patient X-ray"/>
+      </div>
+    </div>
+  </div>
+
+  <!-- Camera Feed Container -->
+  <div id="container">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <!-- Message Div -->
+  <div id="message"></div>
+
+  <!-- Overlay Div -->
+  <div id="overlay">
+    <h2>Access Locked</h2>
+    <p>No authorized face detected.</p>
+  </div>
+
+  <!-- Face detection libs -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-detection"></script>
+  <!-- AWS SDK -->
+  <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1280.0.min.js"></script>
+
+  <script>
+    // main variables
+    let video, canvas, ctx, detector;
+    let faces = [];
+    let faceDetected = false;         // True if at least one face is detected
+    let lastMessageWasSignIn = false; // True if the last websocket message was user-sign-in
+    let websocket = null;
+    let timer = null;                 // For the periodic capture setTimeout
+    let running = false;              // Indicates continuous capture is in progress
+
+    // dummypatient data
+    const patientData = [
+        { id: 'user1', name: 'Doe, John', mrn: '9884327', dob: '1970-01-01', imageSrc: './images/user1.png' },
+        { id: 'user2', name: 'Smith, Jane', mrn: '9876543', dob: '1985-05-15', imageSrc: './images/user2.png' },
+        { id: 'user3', name: 'Williams, Robert', mrn: '5551212', dob: '1962-11-30', imageSrc: './images/user3.png' }
+    ];
+    let currentUserId = 'user1'; // default user
+    // variables for displaying patient data
+    let patientInfoElement;
+    let pacsImageElement;
+    let userSwitchButtons;
+
+    /**
+     * updates patient info text and display image
+     * @param {string} userId - the ID of the user to display
+     */
+     function updatePatientView(userId) {
+        const patient = patientData.find(p => p.id === userId);
+        if (!patient) {
+            console.warn(`Patient data not found for ID: ${userId}`);
+            return;
+        }
+        currentUserId = userId;
+        // Update Patient Info Text
+        if (patientInfoElement) {
+            patientInfoElement.innerHTML = `<strong>Name:</strong> ${patient.name}<br><strong>MRN:</strong> ${patient.mrn}<br><strong>DOB:</strong> ${patient.dob}`;
+        } else { console.error("Patient Info Element not found"); }
+        // Update PACS Image
+        if (pacsImageElement) {
+            pacsImageElement.src = patient.imageSrc;
+            pacsImageElement.alt = `X-ray for ${patient.name}`;
+        } else { console.error("PACS Image Element not found"); }
+        // Update active state on buttons
+        userSwitchButtons.forEach(button => {
+            button.classList.toggle('active', button.dataset.userid === userId);
+        });
+        console.log(`Switched view to patient: ${patient.name} (${userId})`);
+    }
+
+    /**
+     * main entry point - initializes UI and core components.
+     */
+    async function main() {
+      // get UI refs and add event listeners for patient switching
+      patientInfoElement = document.getElementById('patientInfoText');
+      pacsImageElement = document.getElementById('pacsImage');
+      userSwitchButtons = document.querySelectorAll('.user-switch-btn');
+      userSwitchButtons.forEach(button => {
+          button.addEventListener('click', () => {
+              updatePatientView(button.dataset.userid);
+          });
+      });
+      updatePatientView(currentUserId); // load default user data
+
+      try {
+        // initialize camera, face detector
+        document.getElementById("message").innerText = "Setting up camera...";
+        await setupCamera();
+        document.getElementById("message").innerText = "Loading face detector...";
+        await createFaceDetector();
+
+        // set initial canvas size based on video metadata
+        if (video.videoWidth > 0 && video.videoHeight > 0) {
+           canvas.width = video.videoWidth;
+           canvas.height = video.videoHeight;
+        } else {
+            console.warn("Initial video dimensions not ready, canvas size might be incorrect initially.");
+        }
+
+        // start face detection loop
+        document.getElementById("message").innerText = "Starting face detection...";
+        detectFaces();
+
+        // connect the WebSocket
+        document.getElementById("message").innerText = "Connecting to backend...";
+        connectWebSocket();
+
+        // attempt cleanup on page unload
+        window.addEventListener("unload", cleanupAll);
+
+      } catch (error) {
+        console.error("Error in main initialization:", error);
+        document.getElementById("message").innerText = "Initialization Error!";
+        const overlay = document.getElementById("overlay");
+        if(overlay) {
+            overlay.classList.remove('hidden');
+            overlay.querySelector("p").innerText = "System initialization failed.";
+        }
+      }
+    }
+
+    /**
+     * requests camera stream and attaches it to the video element
+     */
+    async function setupCamera() {
+      video = document.getElementById("video");
+      canvas = document.getElementById("canvas");
+      ctx = canvas.getContext("2d");
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { throw new Error("getUserMedia is not supported."); }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }, // added size hint
+        audio: false,
+      });
+      video.srcObject = stream;
+
+      // wait for video metadata and successful play
+      return new Promise((resolve, reject) => {
+        video.onloadedmetadata = () => {
+          if (video.videoWidth > 0 && video.videoHeight > 0) { video.play().then(resolve).catch(reject); }
+          else { setTimeout(() => { if (video.videoWidth > 0) video.play().then(resolve).catch(reject); else reject(new Error("Video dimensions not available.")) }, 100); }
+        };
+        video.onerror = (e) => reject(new Error("Video error: " + (e.message || 'Unknown')));
+      });
+    }
+
+    /**
+     * creates the face detector using MediaPipe via TensorFlow.js.
+     */
+    async function createFaceDetector() {
+      await tf.setBackend('webgl'); await tf.ready(); // initialize TFJS backend
+      const model = faceDetection.SupportedModels.MediaPipeFaceDetector;
+      const detectorConfig = {
+        runtime: "mediapipe", solutionPath: "https://cdn.jsdelivr.net/npm/@mediapipe/face_detection",
+        modelType: "short", maxFaces: 3,
+      };
+      detector = await faceDetection.createDetector(model, detectorConfig);
+      console.log("Face detector created.");
+    }
+
+    /**
+     * continuously detects faces and draws bounding boxes on the canvas.
+     */
+    async function detectFaces() {
+      // Wait if detector/video isn't ready
+      if (!detector || !video || video.readyState < video.HAVE_CURRENT_DATA || video.paused || video.ended) {
+        console.warn("detectFaces: Waiting for video/detector readiness.");
+        requestAnimationFrame(detectFaces); return;
+      }
+
+      // sstimate faces in the current video frame
+      try {
+        faces = await detector.estimateFaces(video, { flipHorizontal: false });
+      } catch (error) {
+         console.error("Error estimating faces:", error);
+         requestAnimationFrame(detectFaces); return; // Continue loop even after error
+      }
+
+      // clear previous drawings
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // adjust canvas size dynamically to match container element size
+      const container = document.getElementById("container");
+      if (canvas.width !== container.offsetWidth || canvas.height !== container.offsetHeight) {
+        canvas.width = container.offsetWidth;
+        canvas.height = container.offsetHeight;
+      }
+
+      // update face detection status
+      faceDetected = faces && faces.length > 0;
+
+      // draw bounding boxes if faces are detected
+      if (faceDetected) {
+        // calculate scaling factors to map video coords to canvas coords
+        const scaleX = canvas.width / (video.videoWidth || canvas.width);
+        const scaleY = canvas.height / (video.videoHeight || canvas.height);
+
+        faces.forEach((face) => {
+          const box = face.box;
+          // draw box only if valid
+          if (box && box.width > 0 && box.height > 0) {
+              const xMin = box.xMin * scaleX; const yMin = box.yMin * scaleY;
+              const width = box.width * scaleX; const height = box.height * scaleY;
+              ctx.beginPath(); ctx.strokeStyle = "red"; ctx.lineWidth = 1;
+              ctx.rect(xMin, yMin, width, height); ctx.stroke();
+          }
+        });
+      }
+
+      // update UI access based on detection and auth status
+      checkAccess();
+      // request next frame
+      requestAnimationFrame(detectFaces);
+    }
+
+
+    /**
+     * shows/hides the main UI overlay based on authorization status.
+     */
+    function checkAccess() {
+      const isAuthorized = faceDetected && lastMessageWasSignIn;
+      const overlay = document.getElementById("overlay");
+      const overlayText = overlay ? overlay.querySelector("p") : null;
+
+      if (!overlay) return; // safety check
+
+      if (isAuthorized) {
+        // hide overlay if it's currently visible
+        if (!overlay.classList.contains('hidden')) {
+            overlay.classList.add("hidden");
+            console.log("Access granted.");
+            document.getElementById("message").innerText = "Access Granted";
+        }
+      } else {
+        // show overlay if it's currently hidden
+        if (overlay.classList.contains('hidden')) {
+            overlay.classList.remove("hidden");
+            console.log("Access locked.");
+            document.getElementById("message").innerText = "Access Locked";
+        }
+        // update overlay status message
+        if (overlayText) {
+            if (!faceDetected) { overlayText.innerText = "No face detected. Please look at the camera."; }
+            else if (!lastMessageWasSignIn) { overlayText.innerText = "Face detected, verifying authorization..."; }
+            else { overlayText.innerText = "Access Locked"; } // fallback message
+        }
+      }
+    }
+
+    /**
+     * connects to the WebSocket backend.
+     */
+    function connectWebSocket() {
+      const websocketURL = "URL_TO_AWS_HOSTED_WEBSOCKET_BACKEND";
+      // prevent multiple connections
+      if (websocket && (websocket.readyState === WebSocket.OPEN || websocket.readyState === WebSocket.CONNECTING)) {
+          console.log("WebSocket connection already open/connecting."); return;
+      }
+      websocket = new WebSocket(websocketURL);
+
+      // WebSocket event handlers
+      websocket.onopen = () => {
+        document.getElementById("message").innerText = "WebSocket connected.";
+        console.log("Connected to backend.");
+        startContinuousDetection(); // Start periodic capture on successful connection
+      };
+
+      websocket.onmessage = (event) => {
+        try {
+            const data = JSON.parse(event.data);
+            console.log("WS msg received:", data);
+            const previousAuthStatus = lastMessageWasSignIn;
+            // update auth status based on backend message
+            lastMessageWasSignIn = (data.event === "user-sign-in" && !!data.userID);
+            if (lastMessageWasSignIn !== previousAuthStatus) { console.log(`Auth status changed: ${lastMessageWasSignIn}`); }
+            checkAccess(); // update UI lock status
+        } catch (e) { console.error("Error parsing WS message:", e); }
+      };
+
+      websocket.onerror = (err) => {
+        console.error("WebSocket error:", err);
+        document.getElementById("message").innerText = "WebSocket connection error.";
+        // stop capture and lock UI on error
+        stopContinuousDetection();
+        lastMessageWasSignIn = false;
+        checkAccess();
+      };
+
+      websocket.onclose = (event) => { // added event parameter for logging
+        try {
+          console.log("WebSocket closed:", event.code, event.reason);
+          document.getElementById("message").innerText = "WebSocket disconnected.";
+          // revoke access and stop capture on close
+          lastMessageWasSignIn = false;
+          stopContinuousDetection();
+          checkAccess();
+        } catch (error) { 
+          console.error("Error during WebSocket onclose:", error); 
+        }
+      };
+    }
+
+    /**
+     * starts the periodic face capture and upload process.
+     */
+    function startContinuousDetection() {
+      // prevent multiple loops or starting if detector/video isn't ready
+      if (running) { console.log("Periodic detection already running."); return; }
+      if (!detector || !video || video.readyState < video.HAVE_CURRENT_DATA) { console.warn("Cannot start periodic detection: detector or video not ready."); return; }
+      running = true;
+      document.getElementById("message").innerText = "Scanning face...";
+      console.log("Starting periodic capture for backend verification...");
+      captureFacePeriodically(); // start the loop
+    }
+
+    /**
+     * stops the periodic face capture process.
+     */
+    function stopContinuousDetection() {
+      if (!running) return; // only act if running
+      running = false;
+      clearTimeout(timer); // stop the scheduled next capture
+      document.getElementById("message").innerText = "Face scanning stopped.";
+      console.log("Stopped periodic capture.");
+    }
+
+    /**
+     * periodically captures the largest detected face and initiates upload.
+     */
+    function captureFacePeriodically() {
+      if (!running) return; // exit if stopped
+
+      // check if prerequisites are met (detector, video ready, face detected)
+      if (!detector || !video || video.readyState < video.HAVE_CURRENT_DATA || !faces || faces.length === 0) {
+        console.log("Capture: Waiting for prerequisites...");
+        timer = setTimeout(captureFacePeriodically, 1000); // check again soon
+        return;
+      }
+
+      // find the largest face based on bounding box area
+      const largestFace = faces.reduce((largest, current) => {
+          const largestArea = (largest?.box?.width || 0) * (largest?.box?.height || 0);
+          const currentArea = (current?.box?.width || 0) * (current?.box?.height || 0);
+          return currentArea > largestArea ? current : largest;
+      });
+
+      // ensure a valid face was found
+      if (!largestFace || !largestFace.box || largestFace.box.width <= 0 || largestFace.box.height <= 0) {
+          console.warn("Capture: No valid largest face found this cycle.");
+          timer = setTimeout(captureFacePeriodically, 1000); // try again
+          return;
+      }
+
+      // define padding and calculate crop coordinates, ensuring they stay within video bounds
+      const padding = 25;
+      const { xMin, yMin, width, height } = largestFace.box;
+      const sx = Math.max(0, xMin - padding); const sy = Math.max(0, yMin - padding);
+      const sw = Math.min(video.videoWidth - sx, width + 2 * padding); const sh = Math.min(video.videoHeight - sy, height + 2 * padding);
+
+      // check for valid crop dimensions
+      if (sw <= 0 || sh <= 0) {
+          console.warn("Capture: Invalid calculated crop dimensions.");
+          timer = setTimeout(captureFacePeriodically, 1000); // retry
+          return;
+      }
+
+      // draw the cropped face region onto an off-screen canvas
+      const faceCanvas = document.createElement("canvas");
+      faceCanvas.width = sw; faceCanvas.height = sh;
+      const faceCtx = faceCanvas.getContext("2d");
+      try {
+          faceCtx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
+      } catch(drawError) {
+          console.error("Error drawing cropped face to canvas:", drawError);
+          timer = setTimeout(captureFacePeriodically, 1000); // retry
+          return;
+      }
+
+      // convert the canvas content to a PNG Blob
+      faceCanvas.toBlob((blob) => {
+        if (blob) {
+          uploadFaceToS3(blob); // upload the blob
+        } else {
+          console.warn("Failed to create blob from face canvas.");
+        }
+        // schedule the next capture attempt (outside blob callback for original timing)
+      }, "image/png");
+
+      // schedule next capture (original timing: schedules immediately after starting blob conversion)
+      if (running) {
+          timer = setTimeout(captureFacePeriodically, 1000);
+      }
+    }
+
+    /**
+     * uploads the captured face image (as a Blob) to S3.
+     */
+    function uploadFaceToS3(blob) {
+      console.log(`Uploading face blob (size: ${blob.size} bytes)...`);
+      // Configure AWS SDK (Cognito for temporary credentials)
+      AWS.config.region = "us-east-1";
+      AWS.config.credentials = new AWS.CognitoIdentityCredentials({
+        IdentityPoolId: "us-east-1:e953f3d6-5ac8-402c-a1c2-9a229a7a76f5",
+      });
+
+      // ensure credentials are valid then upload
+      AWS.config.credentials.get((err) => {
+        if (err) { console.error("Error fetching AWS credentials:", err); return; }
+
+        //create S3 client and define upload parameters
+        const s3 = new AWS.S3({ apiVersion: '2006-03-01', region: AWS.config.region });
+        const fileName = `uploads/face-${Date.now()}.png`;
+        const uploadParams = { Bucket: "face-returninguser-v1", Key: fileName, Body: blob, ContentType: "image/png" };
+
+        // perform the S3 upload
+        s3.upload(uploadParams, (err, data) => {
+          if (err) {
+            console.error("S3 Upload error:", err);
+            document.getElementById("message").innerText = "Upload failed.";
+          } else {
+            console.log("S3 Upload success:", data.Location);
+            document.getElementById("message").innerText = "Image uploaded.";
+          }
+        });
+      });
+    }
+
+    /**
+     * cleanup resources on page unload.
+     */
+    function cleanupAll() {
+      console.log("Running cleanupAll...");
+      try {
+        stopContinuousDetection(); // stop the timer loop
+
+        // stop the camera stream tracks
+        if (video && video.srcObject) {
+          video.srcObject.getTracks().forEach(track => track.stop());
+          console.log("Video stream stopped.");
+        }
+
+        // close the WebSocket connection cleanly
+        if (websocket && websocket.readyState === WebSocket.OPEN) {
+          websocket.close(1001, "Page unloading"); // 1001 = Going Away
+          console.log("WebSocket closed.");
+        }
+      } catch (error) { console.error("Error during cleanupAll:", error); }
+    }
+
+    // initialize the application when the window loads
+    window.onload = main;
+  </script>
+</body>
+</html>
